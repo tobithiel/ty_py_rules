@@ -106,6 +106,8 @@ def my_py_indygreg_standalone(
 
 def _my_py_system_python_impl(rctx):
     full_path = rctx.which(rctx.attr.interpreter_path)
+    if not full_path:
+        fail('Could not find python installation with path: '+ rctx.attr.interpreter_path)
     rctx.symlink(full_path, 'python')
     rctx.file('BUILD.bazel', 'exports_files(["python"])')
     
