@@ -120,7 +120,7 @@ my_py_system_python = repository_rule(
 
 
 # TODO put wheel downloading into repo rule, so network can be locked down
-# TODO how to decide between source & bin wheels (automatic? download bin wheel if available, otherwise source wheel)
+# TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
 # TODO rule to download source dist and build it
 # TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
 # TODO support something like PYTHONSAFEPATH on older pythons (use ast.compile + exec() with manual sys.path modification as workaround?)
