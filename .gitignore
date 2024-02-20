@@ -1,0 +1,4 @@
+/bazel
+/bazel-*
+/tmp/
+__pycache__/
