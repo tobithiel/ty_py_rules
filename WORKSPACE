@@ -6,7 +6,8 @@ load("//:defs.bzl", "my_py_indygreg_standalone", "my_py_system_python", "my_py_p
 # internal
 my_py_pip_repository(
     name = "internal_reqs",
-    requirements = "@//:internal_requirements.in.txt"
+    requirements = "@//:internal_requirements.in.txt",
+    interpreter = "@system_python//:python",
 )
 
 # Usage
@@ -28,5 +29,8 @@ register_toolchains(
 
 my_py_pip_repository(
     name = "reqs",
-    requirements = "@//:requirements.in.txt"
+    requirements = "@//:requirements.in.txt",
+    interpreter = "@system_python//:python",
 )
+load("@reqs//:requirements.bzl", "install_deps")
+install_deps()

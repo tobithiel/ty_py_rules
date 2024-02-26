@@ -1,0 +1,14 @@
+load("@//:defs.bzl", "my_py_bin_wheel_downloader")
+
+_INTERPRETER = {{INTERPRETER}}
+_WHEELS = {{WHEELS}}
+
+def install_deps(**kwargs):
+    for (name, _, requirement, deps) in _WHEELS:
+        my_py_bin_wheel_downloader(
+            name=name,
+            requirement=requirement,
+            deps=deps,
+            interpreter=_INTERPRETER,
+            **kwargs,
+        )

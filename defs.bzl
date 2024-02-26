@@ -119,7 +119,6 @@ my_py_system_python = repository_rule(
 )
 
 
-# TODO put wheel downloading into repo rule, so network can be locked down
 # TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
 # TODO rule to download source dist and build it
 # TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
@@ -304,66 +303,95 @@ def _my_py_requirements_parser(txt):
         requirements.append((distribution_name, requirement, deps[distribution_name]))
     return requirements
 
+def _req_target_name(req_name, distribution_name):
+    return req_name + '_' + distribution_name
 
 def _my_py_pip_repository_impl(rctx):
     txt = rctx.read(rctx.attr.requirements)
     requirements = _my_py_requirements_parser(txt)
-    for (name, requirement, deps) in requirements:
-        rctx.file(name + '/BUILD.bazel', 'load("@//:defs.bzl", "my_py_bin_wheel")\n\
-exports_files(["__main__.py"])\n\
-\
-my_py_bin_wheel(\
-    name = "' + name + '",\
-    requirement = "' + requirement + '",\
-    deps = [' + ', '.join(['"//' + dep + '"' for dep in deps]) + '],\
-    visibility = ["//visibility:public"],\
-)')
+    requirements_with_name = []
+    for (distribution_name, requirement, deps) in requirements:
+        name = _req_target_name(rctx.attr.name, distribution_name)
+        deps_named = ['@' + _req_target_name(rctx.attr.name, dep) for dep in deps]
+        requirements_with_name.append((
+            name,
+            distribution_name,
+            requirement,
+            deps_named,
+        ))
     rctx.file('BUILD.bazel', '')
+    rctx.template(
+        'requirements.bzl',
+        rctx.attr._template,
+        substitutions = {
+            '{{INTERPRETER}}': repr(rctx.attr.interpreter),
+            '{{WHEELS}}': '[{}]'.format(', '.join([repr(r) for r in requirements_with_name])),
+        },
+    )
+    for (name, distribution_name, _, _) in requirements_with_name:
+        rctx.file(distribution_name + '/BUILD.bazel', "alias(name='" + distribution_name + "', actual='@" + name + "', visibility = ['//visibility:public'])")
+
 
 my_py_pip_repository = repository_rule(
     implementation = _my_py_pip_repository_impl,
     attrs = {
         "requirements": attr.label(allow_single_file=True, mandatory=True),
+        "interpreter": attr.label(mandatory=True),
+        "_template": attr.label(allow_single_file=True, default='_deps.bzl.tmpl'),
     },
 )
 
 
 
 
-def _my_py_bin_wheel_impl(ctx):
-    info = ctx.toolchains[TOOLCHAIN_TYPE_TARGET].my_py_info
 
-    transitive_wheels = _get_transitive_whls(ctx.attr.deps)
-    
-    wheel_requirement_file = ctx.actions.declare_file(ctx.attr.name + '_requirement.txt')
-    ctx.actions.write(
-        output = wheel_requirement_file,
-        content = ctx.attr.requirement,
-    )
-    
-    wheel_file = ctx.actions.declare_file(ctx.attr.name + '.whl')
-    wheel_name_file = ctx.actions.declare_file(ctx.attr.name + '.whl.name')
-    ctx.actions.run(
-        mnemonic = "GetBinaryWheel",
-        executable = info.interpreter_path,
-        arguments = info.interpreter_args + info.extra_internal_interpreter_args + [
-            ctx.file._binary_wheel_downloader.path,
-            wheel_requirement_file.path,
-            wheel_file.path,
-            wheel_name_file.path,
+def _my_py_bin_wheel_downloader_impl(rctx):
+    wheel_requirement_file = rctx.attr.name + '_requirement.txt'
+    rctx.file(wheel_requirement_file, rctx.attr.requirement)
+    wheel_file = rctx.attr.name + '.whl'
+    wheel_name_file = rctx.attr.name + '.whl.name'
+    rctx.execute(
+        [rctx.path(rctx.attr.interpreter).realpath] + [
+            rctx.path(rctx.attr._binary_wheel_downloader).realpath,
+            wheel_requirement_file,
+            wheel_file,
+            wheel_name_file,
         ],
-        tools = [info.interpreter_path, ctx.file._binary_wheel_downloader],
-        inputs = [wheel_requirement_file],
-        outputs = [wheel_file, wheel_name_file],
     )
+    rctx.file('BUILD.bazel', """load('@//:defs.bzl', 'my_py_bin_wheel')
+
+my_py_bin_wheel(
+    name = '""" + rctx.attr.name + """',
+    wheel = '//:""" + wheel_file + """',
+    wheel_name = '//:""" + wheel_name_file + """',
+    deps = [""" + ', '.join(["'" + str(dep) + "'" for dep in rctx.attr.deps]) + """],
+    visibility = ['//visibility:public'],
+)""")
+
+
+my_py_bin_wheel_downloader = repository_rule(
+  implementation = _my_py_bin_wheel_downloader_impl,
+  attrs = {
+    "requirement": attr.string(mandatory=True),
+    "deps": attr.label_list(providers = [MyPythonInfo]),
+    "interpreter": attr.label(mandatory=True),
+    "_binary_wheel_downloader": attr.label(
+        allow_single_file = [".py"],
+        default = "download_binary_wheel.py",
+    ),
+  },
+)
+
+def _my_py_bin_wheel_impl(ctx):
+    transitive_wheels = _get_transitive_whls(ctx.attr.deps)
     return [
-        DefaultInfo(files=depset([wheel_file, wheel_name_file])),
+        DefaultInfo(files=depset([ctx.file.wheel, ctx.file.wheel_name])),
         MyPythonInfo(
             transitive_sources = depset([]),
             transitive_data = depset([]),
             transitive_wheels = depset(
                 direct = [
-                    struct(wheel_file=wheel_file, name_file=wheel_name_file),
+                    struct(wheel_file=ctx.file.wheel, name_file=ctx.file.wheel_name),
                 ],
                 transitive = [transitive_wheels],
             ),
@@ -374,12 +402,9 @@ def _my_py_bin_wheel_impl(ctx):
 my_py_bin_wheel = rule(
   implementation = _my_py_bin_wheel_impl,
   attrs = {
-    "requirement": attr.string(mandatory=True),
+    "wheel": attr.label(allow_single_file = [".whl"], mandatory=True),
+    "wheel_name": attr.label(allow_single_file = [".whl.name"], mandatory=True),
     "deps": attr.label_list(providers = [MyPythonInfo]),
-    "_binary_wheel_downloader": attr.label(
-        allow_single_file = [".py"],
-        default = "download_binary_wheel.py",
-    ),
   },
   toolchains = [
     config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),

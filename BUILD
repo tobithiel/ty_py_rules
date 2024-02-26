@@ -1,4 +1,4 @@
-load("//:defs.bzl", "compile_requirements", "my_py_binary", "my_py_library", "my_py_test", "my_py_toolchain", "my_py_bin_wheel")
+load("//:defs.bzl", "compile_requirements", "my_py_binary", "my_py_library", "my_py_test", "my_py_toolchain")
 
 # Internal
 
