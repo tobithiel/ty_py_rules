@@ -449,7 +449,6 @@ my_py_library = rule(
 
 _common_exec_attrs = {
     "main": attr.label(allow_single_file = [".py"], mandatory=True),
-    "deps": attr.label_list(providers = [MyPythonInfo]),
     "data": attr.label_list(allow_files = True),
     "_template": attr.label(
         allow_single_file = True,
@@ -459,11 +458,18 @@ _common_exec_attrs = {
         allow_single_file = True,
         default = "_main.py",
     ),
+}
+_common_exec_deps_attrs = {
+    "deps": attr.label_list(providers = [MyPythonInfo]),
     "_wheels_installer": attr.label(
-        allow_single_file = [".py"],
-        default = "install_wheels.py",
+        default = "//:install_wheels",
+        executable = True,
+        cfg = "exec",
+        allow_single_file = True,
     ),
 }
+_common_exec_with_deps_attrs = dict(**_common_exec_attrs)
+_common_exec_with_deps_attrs.update(**_common_exec_deps_attrs)
 
 def _my_py_binary_or_test(
     ctx,
@@ -472,33 +478,40 @@ def _my_py_binary_or_test(
 ):
     info = ctx.toolchains[TOOLCHAIN_TYPE_TARGET].my_py_info
 
-    transitive_srcs = _get_transitive_srcs(ctx.files.main, ctx.attr.deps + extra_deps)
-    transitive_data = _get_transitive_data(ctx.files.data, ctx.attr.deps + extra_deps)
-    transitive_whls = _get_transitive_whls(ctx.attr.deps + extra_deps)
+    transitive_srcs = depset()
+    transitive_data = depset()
+    transitive_whls = depset()
+    if hasattr(ctx.attr, 'deps'):
+        transitive_srcs = _get_transitive_srcs(ctx.files.main, ctx.attr.deps + extra_deps)
+        transitive_data = _get_transitive_data(ctx.files.data, ctx.attr.deps + extra_deps)
+        transitive_whls = _get_transitive_whls(ctx.attr.deps + extra_deps)
 
     all_wheels = transitive_whls.to_list()
-    wheels_manifest = ctx.actions.declare_file(ctx.label.name + '.wheels.txt')
-    ctx.actions.write(
-        output = wheels_manifest,
-        content = '\n'.join([wheel.wheel_file.path + ',' + wheel.name_file.path for wheel in all_wheels]),
-    )
-    wheels_dir = ctx.actions.declare_directory(ctx.label.name + '.wheels')
-    ctx.actions.run(
-        mnemonic = "InstallWheels",
-        executable = info.interpreter_path,
-        arguments = info.interpreter_args + info.extra_internal_interpreter_args + [
-            ctx.file._wheels_installer.path,
-            wheels_manifest.path,
-            wheels_dir.path,
-        ],
-        tools = [info.interpreter_path, ctx.file._wheels_installer],
-        inputs = [wheels_manifest] + [whl.wheel_file for whl in all_wheels] + [whl.name_file for whl in all_wheels],
-        outputs = [wheels_dir],
-    )
+    wheels_dir = None
+    if len(all_wheels) > 0:
+        wheels_manifest = ctx.actions.declare_file(ctx.label.name + '.wheels.txt')
+        ctx.actions.write(
+            output = wheels_manifest,
+            content = '\n'.join([wheel.wheel_file.path + ',' + wheel.name_file.path for wheel in all_wheels]),
+        )
+        wheels_dir = ctx.actions.declare_directory(ctx.label.name + '.wheels')
+        ctx.actions.run(
+            mnemonic = "InstallWheels",
+            executable = ctx.file._wheels_installer,
+            arguments = [
+                wheels_manifest.path,
+                wheels_dir.path,
+            ],
+            tools = ctx.attr._wheels_installer.files,
+            inputs = [wheels_manifest] + [whl.wheel_file for whl in all_wheels] + [whl.name_file for whl in all_wheels],
+            outputs = [wheels_dir],
+        )
     
     executable = ctx.actions.declare_file(ctx.label.name)
     actual_entrypoint = ctx.file.main.path
     if entrypoint_override:
+        if wheels_dir == None:
+            fail('entrypoint_override requires wheel depedencies')
         actual_entrypoint = wheels_dir.short_path + '/' + entrypoint_override + ' ' + ctx.file.main.path
     ctx.actions.expand_template(
         output = executable,
@@ -507,17 +520,20 @@ def _my_py_binary_or_test(
             "{{INTERPRETER_PATH}}": info.interpreter_path.path,
             "{{INTERPRETER_ARGS}}": ' '.join(info.interpreter_args),
             "{{WORKSPACE_NAME}}": ctx.workspace_name,
-            "{{WHEELS_DIR}}": wheels_dir.short_path, # TODO doesn't work with standalone python
+            "{{WHEELS_DIR}}": wheels_dir.short_path if wheels_dir else '', # TODO doesn't work with standalone python
             "{{ENTRYPOINT}}": ctx.file._entrypoint.path,
             "{{ACTUAL_ENTRYPOINT}}": actual_entrypoint,
         },
     )
+    wheels_deps = []
+    if wheels_dir:
+        wheels_deps.append(wheels_dir)
 
     return [
         DefaultInfo(
             executable=executable,
             runfiles=ctx.runfiles(
-                files=[info.interpreter_path, ctx.file._entrypoint, wheels_dir],
+                files=[info.interpreter_path, ctx.file._entrypoint, ctx.file.main] + wheels_deps,
                 transitive_files=depset(transitive=[transitive_srcs, transitive_data]),
             ),
         ),
@@ -530,6 +546,21 @@ def _my_py_binary_impl(ctx):
 
 my_py_binary = rule(
   implementation = _my_py_binary_impl,
+  attrs = _common_exec_with_deps_attrs,
+  toolchains = [
+    config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
+  ],
+  executable = True,
+  test = False,
+)
+
+
+def _my_py_binary_no_deps_impl(ctx):
+    return _my_py_binary_or_test(ctx, [], None)
+
+
+my_py_binary_no_deps = rule(
+  implementation = _my_py_binary_no_deps_impl,
   attrs = _common_exec_attrs,
   toolchains = [
     config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
@@ -549,7 +580,7 @@ my_py_test = rule(
         '_extra_deps': attr.label_list(providers = [MyPythonInfo], default=['@internal_reqs//pytest']),
         '_entrypoint_override': attr.string(default='pytest/__main__.py'),
     },
-    **_common_exec_attrs),
+    **_common_exec_with_deps_attrs),
   toolchains = [
     config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
   ],
@@ -563,7 +594,7 @@ def _my_py_bare_test_impl(ctx):
 
 my_py_bare_test = rule(
   implementation = _my_py_bare_test_impl,
-  attrs = _common_exec_attrs,
+  attrs = _common_exec_with_deps_attrs,
   toolchains = [
     config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
   ],
