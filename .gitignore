@@ -1,7 +1,7 @@
 /bazel
-/bazel-bin/
-/bazel-hermbzl/
-/bazel-out/
-/bazel-testlogs/
+/bazel-bin
+/bazel-hermbzl
+/bazel-out
+/bazel-testlogs
 /tmp/
 __pycache__/

@@ -8,6 +8,7 @@ INT_ARGS="{{INTERPRETER_ARGS}}"
 WORKSPACE_NAME="{{WORKSPACE_NAME}}"
 WHEELS_DIR="{{WHEELS_DIR}}"
 ENTRYPOINT="{{ENTRYPOINT}}"
+ACTUAL_ENTRYPOINT="{{ACTUAL_ENTRYPOINT}}"
 ARGS="{{ARGS}}"
 
 if [ -z "${RUNFILES_DIR:-}" ]; then
@@ -27,9 +28,6 @@ unset PYTHONUSERBASE
 unset PYTHONEXECUTABLE
 unset LD_LIBRARY_PATH
 
-# TODO does not work with standalone built? (doesn't exist until python 3.11)
-# use ast.compile + exec() with manual sys.path modification as workaround
-export PYTHONSAFEPATH="1"
 export PYTHONPATH="${RUNFILES_DIR}:${RUNFILES_DIR}/${WHEELS_DIR}"
 
-exec "${INT_FULL_PATH}" ${INT_ARGS} ${ENTRYPOINT} $@
+exec "${INT_FULL_PATH}" ${INT_ARGS} ${ENTRYPOINT} ${ACTUAL_ENTRYPOINT} $@

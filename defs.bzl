@@ -54,7 +54,7 @@ my_py_toolchain_info = rule(
     attrs = {
         "interpreter_path": attr.label(mandatory=True, allow_single_file=True),
         "interpreter_args": attr.string_list(
-            default=['-B', '-s', '-S', '-P'], # , '-P' doesn't exist? (new in 3.11)
+            default=['-B', '-s', '-S'], # , '-P' doesn't exist? (new in 3.11)
         ),
         "extra_internal_interpreter_args": attr.string_list(
             default = ['-E', '-I'],
@@ -122,7 +122,6 @@ my_py_system_python = repository_rule(
 # TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
 # TODO rule to download source dist and build it
 # TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
-# TODO support something like PYTHONSAFEPATH on older pythons (use ast.compile + exec() with manual sys.path modification as workaround?)
 
 
 def compile_requirements(
@@ -456,6 +455,10 @@ _common_exec_attrs = {
         allow_single_file = True,
         default = "_main.sh.tpl",
     ),
+    "_entrypoint": attr.label(
+        allow_single_file = True,
+        default = "_main.py",
+    ),
     "_wheels_installer": attr.label(
         allow_single_file = [".py"],
         default = "install_wheels.py",
@@ -494,9 +497,9 @@ def _my_py_binary_or_test(
     )
     
     executable = ctx.actions.declare_file(ctx.label.name)
-    entrypoint = ctx.file.main.path
+    actual_entrypoint = ctx.file.main.path
     if entrypoint_override:
-        entrypoint = wheels_dir.short_path + '/' + entrypoint_override + ' ' + ctx.file.main.path
+        actual_entrypoint = wheels_dir.short_path + '/' + entrypoint_override + ' ' + ctx.file.main.path
     ctx.actions.expand_template(
         output = executable,
         template = ctx.file._template,
@@ -505,7 +508,8 @@ def _my_py_binary_or_test(
             "{{INTERPRETER_ARGS}}": ' '.join(info.interpreter_args),
             "{{WORKSPACE_NAME}}": ctx.workspace_name,
             "{{WHEELS_DIR}}": wheels_dir.short_path, # TODO doesn't work with standalone python
-            "{{ENTRYPOINT}}": entrypoint,
+            "{{ENTRYPOINT}}": ctx.file._entrypoint.path,
+            "{{ACTUAL_ENTRYPOINT}}": actual_entrypoint,
         },
     )
 
@@ -513,7 +517,7 @@ def _my_py_binary_or_test(
         DefaultInfo(
             executable=executable,
             runfiles=ctx.runfiles(
-                files=[info.interpreter_path, wheels_dir],
+                files=[info.interpreter_path, ctx.file._entrypoint, wheels_dir],
                 transitive_files=depset(transitive=[transitive_srcs, transitive_data]),
             ),
         ),

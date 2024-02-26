@@ -72,6 +72,7 @@ my_py_library(
 my_py_binary(
   name = "main",
   main = "main.py",
+  # deps = ["@reqs//requests"],
   deps = ["@reqs//requests", ":lib"],
   # deps = ["@reqs//requests", "@reqs//pyscard", ":lib"],
   # deps = [":requests", ":click", ":pyscard", ":lib"],

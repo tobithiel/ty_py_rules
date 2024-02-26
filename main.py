@@ -5,6 +5,7 @@ print(sys.version)
 print(os.getcwd())
 print(os.environ)
 print(sys.path)
+print(sys.argv)
 print('Hello World')
 
 import lib
