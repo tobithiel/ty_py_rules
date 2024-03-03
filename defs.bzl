@@ -427,15 +427,40 @@ my_py_bin_wheel_downloader = repository_rule(
 )
 
 def _my_py_bin_wheel_impl(ctx):
+    transitive_srcs = depset(
+        transitive = [dep[MyPythonInfo].transitive_sources for dep in ctx.attr.deps],
+    )
+    transitive_data = depset(
+        transitive = [dep[MyPythonInfo].transitive_data for dep in ctx.attr.deps],
+    )
     transitive_wheels = _get_transitive_whls(ctx.attr.deps)
+
+    wheel_manifest = ctx.actions.declare_file(ctx.label.name + '.wheel.txt')
+    ctx.actions.write(
+        output = wheel_manifest,
+        content = ctx.file.wheel.path + ',' + ctx.file.wheel_name.path + '\n',
+    )
+    wheel_dir = ctx.actions.declare_directory(ctx.label.name + '.wheel')
+    ctx.actions.run(
+        mnemonic = "InstallWheel",
+        executable = ctx.file._wheels_installer,
+        arguments = [
+            wheel_manifest.path,
+            wheel_dir.path,
+        ],
+        tools = ctx.attr._wheels_installer.files,
+        inputs = [wheel_manifest, ctx.file.wheel, ctx.file.wheel_name],
+        outputs = [wheel_dir],
+    )
+
     return [
-        DefaultInfo(files=depset([ctx.file.wheel, ctx.file.wheel_name])),
+        DefaultInfo(files=depset([wheel_dir])),
         MyPythonInfo(
-            transitive_sources = depset([]),
-            transitive_data = depset([]),
+            transitive_sources = depset([wheel_dir], transitive=[transitive_srcs]),
+            transitive_data = transitive_data,
             transitive_wheels = depset(
                 direct = [
-                    struct(wheel_file=ctx.file.wheel, name_file=ctx.file.wheel_name),
+                    struct(dir_name = ctx.attr.name, wheel_file=ctx.file.wheel, name_file=ctx.file.wheel_name),
                 ],
                 transitive = [transitive_wheels],
             ),
@@ -449,6 +474,12 @@ my_py_bin_wheel = rule(
     "wheel": attr.label(allow_single_file = [".whl"], mandatory=True),
     "wheel_name": attr.label(allow_single_file = [".whl.name"], mandatory=True),
     "deps": attr.label_list(providers = [MyPythonInfo]),
+    "_wheels_installer": attr.label(
+        default = "//:install_wheels",
+        executable = True,
+        cfg = "exec",
+        allow_single_file = True,
+    ),
   },
   toolchains = [
     config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
@@ -497,6 +528,12 @@ my_py_src_dist_downloader = repository_rule(
 )
 
 def _my_py_bin_wheel_from_src_dist_impl(ctx):
+    transitive_srcs = depset(
+        transitive = [dep[MyPythonInfo].transitive_sources for dep in ctx.attr.deps],
+    )
+    transitive_data = depset(
+        transitive = [dep[MyPythonInfo].transitive_data for dep in ctx.attr.deps],
+    )
     transitive_wheels = _get_transitive_whls(ctx.attr.deps)
 
     wheel_file = ctx.actions.declare_file(ctx.label.name + '.whl')
@@ -517,14 +554,32 @@ def _my_py_bin_wheel_from_src_dist_impl(ctx):
         outputs = [wheel_file, wheel_name_file],
     )
 
+    wheel_manifest = ctx.actions.declare_file(ctx.label.name + '.wheel.txt')
+    ctx.actions.write(
+        output = wheel_manifest,
+        content = wheel_file.path + ',' + wheel_name_file.path + '\n',
+    )
+    wheel_dir = ctx.actions.declare_directory(ctx.label.name + '.wheel')
+    ctx.actions.run(
+        mnemonic = "InstallWheel",
+        executable = ctx.file._wheels_installer,
+        arguments = [
+            wheel_manifest.path,
+            wheel_dir.path,
+        ],
+        tools = ctx.attr._wheels_installer.files,
+        inputs = [wheel_manifest, wheel_file, wheel_name_file],
+        outputs = [wheel_dir],
+    )
+
     return [
-        DefaultInfo(files=depset([wheel_file, wheel_name_file])),
+        DefaultInfo(files=depset([wheel_dir])),
         MyPythonInfo(
-            transitive_sources = depset([]),
-            transitive_data = depset([]),
+            transitive_sources = depset([wheel_dir], transitive=[transitive_srcs]),
+            transitive_data = transitive_data,
             transitive_wheels = depset(
                 direct = [
-                    struct(wheel_file=wheel_file, name_file=wheel_name_file),
+                    struct(dir_name = ctx.attr.name, wheel_file=wheel_file, name_file=wheel_name_file),
                 ],
                 transitive = [transitive_wheels],
             ),
@@ -653,16 +708,13 @@ def _my_py_binary_or_test(
         transitive_whls = _get_transitive_whls(ctx.attr.deps + extra_deps)
 
     all_wheels = transitive_whls.to_list()
-    wheels_dir = None
-    if len(all_wheels) > 0:
-        wheels_dir = _install_wheels(ctx, all_wheels, '')
-    
+    wheel_dirs = []
+    has_pytest = False
+    for wheel in all_wheels:
+        wheel_dirs.append(wheel.dir_name + '/' + wheel.dir_name + '.wheel/')
+
     executable = ctx.actions.declare_file(ctx.label.name)
     actual_entrypoint = ctx.file.main.path
-    if entrypoint_override:
-        if wheels_dir == None:
-            fail('entrypoint_override requires wheel depedencies')
-        actual_entrypoint = wheels_dir.short_path + '/' + entrypoint_override + ' ' + ctx.file.main.path
     ctx.actions.expand_template(
         output = executable,
         template = ctx.file._template,
@@ -670,20 +722,17 @@ def _my_py_binary_or_test(
             "{{INTERPRETER_PATH}}": info.interpreter_path.path,
             "{{INTERPRETER_ARGS}}": ' '.join(info.interpreter_args),
             "{{WORKSPACE_NAME}}": ctx.workspace_name,
-            "{{WHEELS_DIR}}": wheels_dir.short_path if wheels_dir else '',
+            "{{WHEELS_DIR}}": ' '.join(wheel_dirs),
             "{{ENTRYPOINT}}": ctx.file._entrypoint.path,
             "{{ACTUAL_ENTRYPOINT}}": actual_entrypoint,
         },
     )
-    wheels_deps = []
-    if wheels_dir:
-        wheels_deps.append(wheels_dir)
 
     return [
         DefaultInfo(
             executable=executable,
             runfiles=ctx.runfiles(
-                files=[info.interpreter_path, ctx.file._entrypoint, ctx.file.main] + wheels_deps,
+                files=[info.interpreter_path, ctx.file._entrypoint, ctx.file.main],
                 transitive_files=depset(transitive=[transitive_srcs, transitive_data]),
             ),
         ),
