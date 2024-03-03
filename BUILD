@@ -2,7 +2,6 @@ load("//:defs.bzl", "compile_requirements", "my_py_binary", "my_py_binary_no_dep
 
 # Internal
 
-exports_files(["download_binary_wheel.py"])
 toolchain_type(name = "toolchain_type")
 compile_requirements(
     name = "internal_reqs",

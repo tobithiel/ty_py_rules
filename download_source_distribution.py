@@ -23,7 +23,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
 		'-B',
 	    '-E',
 	    '-s',
-	    # '-P', # does not exist?
 	    '-I',
 	    '-m',
 	    'pip',

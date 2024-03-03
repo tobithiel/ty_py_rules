@@ -120,7 +120,6 @@ my_py_system_python = repository_rule(
 
 
 # TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
-# TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
 # TODO separate into example workspace and the rules workspace
 
 
@@ -410,6 +409,7 @@ my_py_bin_wheel_downloader = repository_rule(
     "interpreter": attr.label(mandatory=True),
     "_binary_wheel_downloader": attr.label(
         allow_single_file = [".py"],
+        # can't be a tool due to repository rule
         default = "download_binary_wheel.py",
     ),
   },
@@ -479,6 +479,7 @@ my_py_src_dist_downloader = repository_rule(
     "interpreter": attr.label(mandatory=True),
     "_src_dist_downloader": attr.label(
         allow_single_file = [".py"],
+        # can't be a tool due to repository rule
         default = "download_source_distribution.py",
     ),
   },
