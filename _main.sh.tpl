@@ -1,7 +1,8 @@
 #!/bin/sh -eux
 
-SCRIPT_NAME="$(basename "${0}")"
-SCRIPT_DIR="$(dirname "${0}")"
+SCRIPT_PATH="$(realpath -s "$0")"
+SCRIPT_NAME="$(basename "${SCRIPT_PATH}")"
+SCRIPT_DIR="$(dirname "${SCRIPT_PATH}")"
 CWD=$(pwd)
 
 INT_PATH="{{INTERPRETER_PATH}}"

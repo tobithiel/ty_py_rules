@@ -120,7 +120,6 @@ my_py_system_python = repository_rule(
 
 
 # TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
-# TODO rule to download source dist and build it
 # TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
 
 
@@ -305,6 +304,12 @@ def _my_py_requirements_parser(txt):
 def _req_target_name(req_name, distribution_name):
     return req_name + '_' + distribution_name
 
+def _format_repr_list(l):
+    return '[{}]'.format(', '.join([repr(e) for e in l]))
+
+def _format_string_list_dict(sld):
+    return '{{ {} }}'.format(', '.join(['{}: {}'.format(repr(k), _format_repr_list(vs)) for k, vs in sld.items()]))
+
 def _my_py_pip_repository_impl(rctx):
     txt = rctx.read(rctx.attr.requirements)
     requirements = _my_py_requirements_parser(txt)
@@ -319,12 +324,27 @@ def _my_py_pip_repository_impl(rctx):
             deps_named,
         ))
     rctx.file('BUILD.bazel', '')
+
+    bin_wheels = []
+    src_dists = []
+    if rctx.attr.prefer_wheels:
+        bin_wheels = requirements_with_name
+    else:
+        src_dists = requirements_with_name
+    build_deps_named = {}
+    for distribution_name, build_deps in rctx.attr.wheel_build_deps.items():
+        build_deps_named[_req_target_name(rctx.attr.name, distribution_name)] = [
+            '@' + _req_target_name(rctx.attr.name, build_dep)
+            for build_dep in build_deps
+        ]
     rctx.template(
         'requirements.bzl',
         rctx.attr._template,
         substitutions = {
             '{{INTERPRETER}}': repr(rctx.attr.interpreter),
-            '{{WHEELS}}': '[{}]'.format(', '.join([repr(r) for r in requirements_with_name])),
+            '{{BIN_WHEELS}}': _format_repr_list(bin_wheels),
+            '{{SRC_DISTS}}': _format_repr_list(src_dists),
+            '{{SRC_DISTS_BUILD_DEPS}}': _format_string_list_dict(build_deps_named),
         },
     )
     for (name, distribution_name, _, _) in requirements_with_name:
@@ -336,6 +356,8 @@ my_py_pip_repository = repository_rule(
     attrs = {
         "requirements": attr.label(allow_single_file=True, mandatory=True),
         "interpreter": attr.label(mandatory=True),
+        "prefer_wheels": attr.bool(default=False),
+        "wheel_build_deps": attr.string_list_dict(),
         "_template": attr.label(allow_single_file=True, default='_deps.bzl.tmpl'),
     },
 )
@@ -413,6 +435,105 @@ my_py_bin_wheel = rule(
 )
 
 
+
+def _my_py_src_dist_downloader_impl(rctx):
+    wheel_requirement_file = rctx.attr.name + '_requirement.txt'
+    rctx.file(wheel_requirement_file, rctx.attr.requirement)
+    src_dist_file = rctx.attr.name + '.tar.gz'
+    rctx.execute(
+        [rctx.path(rctx.attr.interpreter).realpath] + [
+            rctx.path(rctx.attr._src_dist_downloader).realpath,
+            wheel_requirement_file,
+            src_dist_file,
+        ],
+    )
+    rctx.file('BUILD.bazel', """load('@//:defs.bzl', 'my_py_bin_wheel_from_src_dist')
+
+my_py_bin_wheel_from_src_dist(
+    name = '""" + rctx.attr.name + """',
+    src_dist = '//:""" + src_dist_file + """',
+    deps = [""" + ', '.join(["'" + str(dep) + "'" for dep in rctx.attr.deps]) + """],
+    build_deps = [""" + ', '.join(["'" + str(build_dep) + "'" for build_dep in rctx.attr.build_deps]) + """],
+    visibility = ['//visibility:public'],
+)""")
+
+
+my_py_src_dist_downloader = repository_rule(
+  implementation = _my_py_src_dist_downloader_impl,
+  attrs = {
+    "requirement": attr.string(mandatory=True),
+    "deps": attr.label_list(providers = [MyPythonInfo]),
+    "build_deps": attr.label_list(providers = [MyPythonInfo]),
+    "interpreter": attr.label(mandatory=True),
+    "_src_dist_downloader": attr.label(
+        allow_single_file = [".py"],
+        default = "download_source_distribution.py",
+    ),
+  },
+)
+
+def _my_py_bin_wheel_from_src_dist_impl(ctx):
+    transitive_wheels = _get_transitive_whls(ctx.attr.deps)
+
+    wheel_file = ctx.actions.declare_file(ctx.label.name + '.whl')
+    wheel_name_file = ctx.actions.declare_file(ctx.label.name + '.whl.name')
+    transitive_build_whls = _get_transitive_whls(ctx.attr.build_deps)
+    build_wheels_dir = _install_wheels(ctx, transitive_build_whls.to_list(), '.build')
+    ctx.actions.run(
+        mnemonic = "BuildWheel",
+        executable = ctx.file._wheel_builder,
+        arguments = [
+            ctx.file.src_dist.path,
+            wheel_file.path,
+            wheel_name_file.path,
+            build_wheels_dir.path,
+        ],
+        tools = ctx.attr._wheel_builder.files,
+        inputs = [ctx.file.src_dist, build_wheels_dir],
+        outputs = [wheel_file, wheel_name_file],
+    )
+
+    return [
+        DefaultInfo(files=depset([wheel_file, wheel_name_file])),
+        MyPythonInfo(
+            transitive_sources = depset([]),
+            transitive_data = depset([]),
+            transitive_wheels = depset(
+                direct = [
+                    struct(wheel_file=wheel_file, name_file=wheel_name_file),
+                ],
+                transitive = [transitive_wheels],
+            ),
+        ),
+    ]
+
+my_py_bin_wheel_from_src_dist = rule(
+  implementation = _my_py_bin_wheel_from_src_dist_impl,
+  attrs = {
+    "src_dist": attr.label(allow_single_file = True, mandatory=True),
+    "deps": attr.label_list(providers = [MyPythonInfo]),
+    "build_deps": attr.label_list(providers = [MyPythonInfo]),
+    "_wheel_builder": attr.label(
+        default = "//:wheel_builder",
+        executable = True,
+        cfg = "exec",
+        allow_single_file = True,
+    ),
+    "_wheels_installer": attr.label(
+        default = "//:install_wheels",
+        executable = True,
+        cfg = "exec",
+        allow_single_file = True,
+    ),
+  },
+  toolchains = [
+    config_common.toolchain_type(TOOLCHAIN_TYPE_TARGET, mandatory=True),
+  ],
+  executable = False,
+  test = False,
+)
+
+
 def _my_py_library_impl(ctx):
     info = ctx.toolchains[TOOLCHAIN_TYPE_TARGET].my_py_info
 
@@ -445,6 +566,27 @@ my_py_library = rule(
   executable = False,
   test = False,
 )
+
+
+def _install_wheels(ctx, wheels, suffix):
+    wheels_manifest = ctx.actions.declare_file(ctx.label.name + suffix + '.wheels.txt')
+    ctx.actions.write(
+        output = wheels_manifest,
+        content = '\n'.join([wheel.wheel_file.path + ',' + wheel.name_file.path for wheel in wheels]),
+    )
+    wheels_dir = ctx.actions.declare_directory(ctx.label.name + suffix + '.wheels')
+    ctx.actions.run(
+        mnemonic = "InstallWheels",
+        executable = ctx.file._wheels_installer,
+        arguments = [
+            wheels_manifest.path,
+            wheels_dir.path,
+        ],
+        tools = ctx.attr._wheels_installer.files,
+        inputs = [wheels_manifest] + [whl.wheel_file for whl in wheels] + [whl.name_file for whl in wheels],
+        outputs = [wheels_dir],
+    )
+    return wheels_dir
 
 
 _common_exec_attrs = {
@@ -489,23 +631,7 @@ def _my_py_binary_or_test(
     all_wheels = transitive_whls.to_list()
     wheels_dir = None
     if len(all_wheels) > 0:
-        wheels_manifest = ctx.actions.declare_file(ctx.label.name + '.wheels.txt')
-        ctx.actions.write(
-            output = wheels_manifest,
-            content = '\n'.join([wheel.wheel_file.path + ',' + wheel.name_file.path for wheel in all_wheels]),
-        )
-        wheels_dir = ctx.actions.declare_directory(ctx.label.name + '.wheels')
-        ctx.actions.run(
-            mnemonic = "InstallWheels",
-            executable = ctx.file._wheels_installer,
-            arguments = [
-                wheels_manifest.path,
-                wheels_dir.path,
-            ],
-            tools = ctx.attr._wheels_installer.files,
-            inputs = [wheels_manifest] + [whl.wheel_file for whl in all_wheels] + [whl.name_file for whl in all_wheels],
-            outputs = [wheels_dir],
-        )
+        wheels_dir = _install_wheels(ctx, all_wheels, '')
     
     executable = ctx.actions.declare_file(ctx.label.name)
     actual_entrypoint = ctx.file.main.path

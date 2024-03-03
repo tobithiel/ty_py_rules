@@ -3,12 +3,21 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("//:defs.bzl", "my_py_indygreg_standalone", "my_py_system_python", "my_py_pip_repository")
 
 
+my_py_system_python(
+    name = "system_python",
+    interpreter_path = "python",
+)
+
 # internal
 my_py_pip_repository(
     name = "internal_reqs",
     requirements = "@//:internal_requirements.in.txt",
+    # TODO should use custom python interpreter
     interpreter = "@system_python//:python",
+    prefer_wheels = True,
 )
+load("@internal_reqs//:requirements.bzl", internal_install_deps = "install_deps")
+internal_install_deps()
 
 # Usage
 my_py_indygreg_standalone(
@@ -31,6 +40,15 @@ my_py_pip_repository(
     name = "reqs",
     requirements = "@//:requirements.in.txt",
     interpreter = "@system_python//:python",
+    # TODO can this be automatically inferred?
+    wheel_build_deps = {
+        "editables": ["flit-core"],
+        "hatchling": ["pathspec", "pluggy"],
+        "idna": ["flit-core"],
+        "packaging": ["flit-core"],
+        "pathspec": ["flit-core"],
+        "urllib3": ["hatchling"],
+    },
 )
 load("@reqs//:requirements.bzl", "install_deps")
 install_deps()

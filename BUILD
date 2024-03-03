@@ -1,4 +1,4 @@
-load("//:defs.bzl", "compile_requirements", "my_py_binary", "my_py_binary_no_deps", "my_py_library", "my_py_test", "my_py_toolchain")
+load("//:defs.bzl", "compile_requirements", "my_py_binary", "my_py_binary_no_deps", "my_py_library", "my_py_test", "my_py_toolchain", "my_py_bin_wheel")
 
 # Internal
 
@@ -12,6 +12,14 @@ compile_requirements(
 my_py_binary_no_deps(
   name = "install_wheels",
   main = "install_wheels.py",
+  visibility = ['//visibility:public'],
+)
+
+my_py_binary(
+  name = "wheel_builder",
+  main = "wheel_builder.py",
+  visibility = ['//visibility:public'],
+  deps = ["@internal_reqs//build"],
 )
 
 
