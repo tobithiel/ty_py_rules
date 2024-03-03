@@ -1,0 +1,4 @@
+always --noenable_bzlmod
+common --incompatible_strict_action_env
+common --incompatible_python_disallow_native_rules
+common --nosandbox_default_allow_network

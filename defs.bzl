@@ -1,6 +1,6 @@
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-TOOLCHAIN_TYPE_TARGET = "//:toolchain_type"
+TOOLCHAIN_TYPE_TARGET = "@my_py_rules//:toolchain_type"
 
 MyPythonToolchainInfo = provider(
     "Info needed to run python code.",
@@ -119,7 +119,6 @@ my_py_system_python = repository_rule(
 )
 
 
-# TODO separate into example workspace and the rules workspace
 
 
 def compile_requirements(
@@ -128,7 +127,7 @@ def compile_requirements(
 ):
     my_py_binary(
         name = name + '.update',
-        main = 'compile_requirements.py',
+        main = '@my_py_rules//:compile_requirements.py',
         deps = [
             '@internal_reqs//pip-tools',
         ],
@@ -141,7 +140,7 @@ def compile_requirements(
     )
     my_py_bare_test(
         name = name + '.test',
-        main = 'check_requirements.py',
+        main = '@my_py_rules//:check_requirements.py',
         deps = [
             '@internal_reqs//pip-tools',
         ],
@@ -385,6 +384,17 @@ my_py_pip_repository = repository_rule(
 )
 
 
+def install_dependencies(interpreter):
+    my_py_pip_repository(
+        name = "internal_reqs",
+        requirements = "@my_py_rules//:internal_requirements.in.txt",
+        interpreter = interpreter,
+        prefer_wheels = True,
+        extra_deps = {
+            "build": ["wheel"],
+        },
+    )
+
 
 
 
@@ -401,7 +411,7 @@ def _my_py_bin_wheel_downloader_impl(rctx):
             wheel_name_file,
         ],
     )
-    rctx.file('BUILD.bazel', """load('@//:defs.bzl', 'my_py_bin_wheel')
+    rctx.file('BUILD.bazel', """load('@my_py_rules//:defs.bzl', 'my_py_bin_wheel')
 
 my_py_bin_wheel(
     name = '""" + rctx.attr.name + """',
@@ -501,7 +511,7 @@ def _my_py_src_dist_downloader_impl(rctx):
             src_dist_file,
         ],
     )
-    rctx.file('BUILD.bazel', """load('@//:defs.bzl', 'my_py_bin_wheel_from_src_dist')
+    rctx.file('BUILD.bazel', """load('@my_py_rules//:defs.bzl', 'my_py_bin_wheel_from_src_dist')
 
 my_py_bin_wheel_from_src_dist(
     name = '""" + rctx.attr.name + """',
