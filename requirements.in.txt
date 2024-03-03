@@ -144,6 +144,10 @@ requests==2.31.0 \
     --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f \
     --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
     # via -r requirements.in
+tomli==2.0.1 \
+    --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
+    --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
+    # via hatchling
 trove-classifiers==2024.2.23 \
     --hash=sha256:3094534b8021dc1822aadb1d11d4c7b62a854d464d19458fd0a49d6fe2b68b77 \
     --hash=sha256:8385160a12aac69c93fff058fb613472ed773a24a27eb3cd4b144cfbdd79f38c

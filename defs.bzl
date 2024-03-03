@@ -338,6 +338,12 @@ def _my_py_pip_repository_impl(rctx):
             '@' + _req_target_name(rctx.attr.name, build_dep)
             for build_dep in build_deps
         ]
+    extra_deps_named = {}
+    for distribution_name, extra_deps in rctx.attr.extra_deps.items():
+        extra_deps_named[_req_target_name(rctx.attr.name, distribution_name)] = [
+            '@' + _req_target_name(rctx.attr.name, extra_dep)
+            for extra_dep in extra_deps
+        ]
     rctx.template(
         'requirements.bzl',
         rctx.attr._template,
@@ -345,6 +351,7 @@ def _my_py_pip_repository_impl(rctx):
             '{{INTERPRETER}}': repr(rctx.attr.interpreter),
             '{{BIN_WHEELS}}': _format_repr_list(bin_wheels),
             '{{SRC_DISTS}}': _format_repr_list(src_dists),
+            '{{EXTRA_DEPS}}': _format_string_list_dict(extra_deps_named),
             '{{SRC_DISTS_BUILD_DEPS}}': _format_string_list_dict(build_deps_named),
         },
     )
@@ -358,6 +365,7 @@ my_py_pip_repository = repository_rule(
         "requirements": attr.label(allow_single_file=True, mandatory=True),
         "interpreter": attr.label(mandatory=True),
         "prefer_wheels": attr.bool(default=False),
+        "extra_deps": attr.string_list_dict(),
         "wheel_build_deps": attr.string_list_dict(),
         "_template": attr.label(allow_single_file=True, default='_deps.bzl.tmpl'),
     },
@@ -647,7 +655,7 @@ def _my_py_binary_or_test(
             "{{INTERPRETER_PATH}}": info.interpreter_path.path,
             "{{INTERPRETER_ARGS}}": ' '.join(info.interpreter_args),
             "{{WORKSPACE_NAME}}": ctx.workspace_name,
-            "{{WHEELS_DIR}}": wheels_dir.short_path if wheels_dir else '', # TODO doesn't work with standalone python
+            "{{WHEELS_DIR}}": wheels_dir.short_path if wheels_dir else '',
             "{{ENTRYPOINT}}": ctx.file._entrypoint.path,
             "{{ACTUAL_ENTRYPOINT}}": actual_entrypoint,
         },
