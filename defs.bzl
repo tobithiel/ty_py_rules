@@ -121,6 +121,7 @@ my_py_system_python = repository_rule(
 
 # TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
 # TODO make proper tools (data dependency to my_py_binary rather than custom sys.executable calls (get same sandboxing etc))
+# TODO separate into example workspace and the rules workspace
 
 
 def compile_requirements(
