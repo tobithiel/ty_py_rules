@@ -44,7 +44,6 @@ my_py_pip_repository(
     name = "reqs",
     requirements = "@//:requirements.in.txt",
     interpreter = "@indygreg_py_3_10_13//:bin/python3",
-    # prefer_wheels = True,
     # TODO can this be automatically inferred?
     wheel_build_deps = {
         "editables": ["flit-core"],

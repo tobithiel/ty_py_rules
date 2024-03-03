@@ -119,7 +119,6 @@ my_py_system_python = repository_rule(
 )
 
 
-# TODO how to decide between source & bin wheels (automatic not possible, needs to be known before build time, user can choose if prefer source or bin and override on case-by-case basis)
 # TODO separate into example workspace and the rules workspace
 
 
@@ -330,10 +329,20 @@ def _my_py_pip_repository_impl(rctx):
 
     bin_wheels = []
     src_dists = []
-    if rctx.attr.prefer_wheels:
-        bin_wheels = requirements_with_name
-    else:
-        src_dists = requirements_with_name
+    for req_with_name in requirements_with_name:
+        force_wheel = req_with_name[1] in rctx.attr.always_wheel
+        force_src_dist = req_with_name[1] in rctx.attr.always_src_dist
+        if force_wheel and force_src_dist:
+            fail("Can't force " + req_with_name[0] + " to wheel and src distribution")
+        if force_wheel:
+            bin_wheels.append(req_with_name)
+        elif force_src_dist:
+            src_dists.append(req_with_name)
+        elif rctx.attr.prefer_wheels:
+            bin_wheels.append(req_with_name)
+        else:
+            src_dists.append(req_with_name)
+
     build_deps_named = {}
     for distribution_name, build_deps in rctx.attr.wheel_build_deps.items():
         build_deps_named[_req_target_name(rctx.attr.name, distribution_name)] = [
@@ -367,6 +376,8 @@ my_py_pip_repository = repository_rule(
         "requirements": attr.label(allow_single_file=True, mandatory=True),
         "interpreter": attr.label(mandatory=True),
         "prefer_wheels": attr.bool(default=False),
+        "always_src_dist": attr.string_list(),
+        "always_wheel": attr.string_list(),
         "extra_deps": attr.string_list_dict(),
         "wheel_build_deps": attr.string_list_dict(),
         "_template": attr.label(allow_single_file=True, default='_deps.bzl.tmpl'),
