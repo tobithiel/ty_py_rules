@@ -715,6 +715,8 @@ def _my_py_binary_or_test(
 
     executable = ctx.actions.declare_file(ctx.label.name)
     actual_entrypoint = ctx.file.main.path
+    if entrypoint_override:
+        actual_entrypoint = entrypoint_override + ' ' + ctx.file.main.path
     ctx.actions.expand_template(
         output = executable,
         template = ctx.file._template,
@@ -777,7 +779,7 @@ my_py_test = rule(
   attrs = dict(
     {
         '_extra_deps': attr.label_list(providers = [MyPythonInfo], default=['@internal_reqs//pytest']),
-        '_entrypoint_override': attr.string(default='pytest/__main__.py'),
+        '_entrypoint_override': attr.string(default='external/internal_reqs_pytest/internal_reqs_pytest.wheel/bin/pytest'),
     },
     **_common_exec_with_deps_attrs),
   toolchains = [
