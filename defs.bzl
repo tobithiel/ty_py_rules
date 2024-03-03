@@ -406,7 +406,7 @@ my_py_bin_wheel_downloader = repository_rule(
   implementation = _my_py_bin_wheel_downloader_impl,
   attrs = {
     "requirement": attr.string(mandatory=True),
-    "deps": attr.label_list(providers = [MyPythonInfo]),
+    "deps": attr.string_list(),
     "interpreter": attr.label(mandatory=True),
     "_binary_wheel_downloader": attr.label(
         allow_single_file = [".py"],
@@ -474,8 +474,8 @@ my_py_src_dist_downloader = repository_rule(
   implementation = _my_py_src_dist_downloader_impl,
   attrs = {
     "requirement": attr.string(mandatory=True),
-    "deps": attr.label_list(providers = [MyPythonInfo]),
-    "build_deps": attr.label_list(providers = [MyPythonInfo]),
+    "deps": attr.string_list(),
+    "build_deps": attr.string_list(),
     "interpreter": attr.label(mandatory=True),
     "_src_dist_downloader": attr.label(
         allow_single_file = [".py"],
