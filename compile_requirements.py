@@ -3,6 +3,8 @@ import pathlib
 import subprocess
 import sys
 
+from piptools.scripts.compile import cli
+
 assert len(sys.argv) == 2
 requirements_in = pathlib.Path(sys.argv[1])
 assert requirements_in.exists()
@@ -15,29 +17,20 @@ assert build_working_dir.is_dir()
 # break out of sandbox to write the requirements file
 requirements_txt = (build_working_dir / requirements_in).parent / requirements_txt_filename
 
-subprocess.run([
-	sys.executable,
-	'-B',
-    # '-E',
-    '-s',
-    '-S',
-    # '-P', # does not exist?
-    # '-I',
-    '-m',
-    'piptools',
-    # TODO --cache-dir?
-    'compile',
+cli([
     '--quiet',
     '--allow-unsafe',
-	'--no-header',
-	'--annotate',
-	'--generate-hashes',
-	'--reuse-hashes',
+    '--no-header',
+    '--annotate',
+    '--generate-hashes',
+    '--reuse-hashes',
     '--emit-options',
     '--emit-index-url',
     '--emit-find-links',
     '--no-strip-extras',
-	'--output-file',
+    '--cache-dir',
+    str(requirements_in.parent),
+    '--output-file',
     str(requirements_txt),
     str(requirements_in),
-], check=True)
+])

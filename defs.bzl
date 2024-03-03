@@ -155,6 +155,9 @@ def compile_requirements(
             '$(location ' + requirements_in + ')',
             '$(location ' + requirements_in + '.txt)',
         ],
+        tags = [
+            'requires-network',
+        ],
     )
 
 
