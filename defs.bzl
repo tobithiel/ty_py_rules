@@ -308,6 +308,9 @@ def _req_target_name(req_name, distribution_name):
 def _format_repr_list(l):
     return '[{}]'.format(', '.join([repr(e) for e in l]))
 
+def _format_string_dict(sd):
+    return '{{ {} }}'.format(', '.join(['{}: {}'.format(repr(k), repr(v)) for k, v in sd.items()]))
+
 def _format_string_list_dict(sld):
     return '{{ {} }}'.format(', '.join(['{}: {}'.format(repr(k), _format_repr_list(vs)) for k, vs in sld.items()]))
 
@@ -354,6 +357,9 @@ def _my_py_pip_repository_impl(rctx):
             '@' + _req_target_name(rctx.attr.name, extra_dep)
             for extra_dep in extra_deps
         ]
+    src_dist_patches_named = {}
+    for distribution_name, patch in rctx.attr.src_dist_patches.items():
+        src_dist_patches_named[_req_target_name(rctx.attr.name, distribution_name)] = '@' + patch
     rctx.template(
         'requirements.bzl',
         rctx.attr._template,
@@ -363,6 +369,7 @@ def _my_py_pip_repository_impl(rctx):
             '{{SRC_DISTS}}': _format_repr_list(src_dists),
             '{{EXTRA_DEPS}}': _format_string_list_dict(extra_deps_named),
             '{{SRC_DISTS_BUILD_DEPS}}': _format_string_list_dict(build_deps_named),
+            '{{SRC_DISTS_PATCHES}}': _format_string_dict(src_dist_patches_named),
         },
     )
     for (name, distribution_name, _, _) in requirements_with_name:
@@ -378,6 +385,7 @@ my_py_pip_repository = repository_rule(
         "always_src_dist": attr.string_list(),
         "always_wheel": attr.string_list(),
         "extra_deps": attr.string_list_dict(),
+        "src_dist_patches": attr.string_dict(),
         "wheel_build_deps": attr.string_list_dict(),
         "_template": attr.label(allow_single_file=True, default='_deps.bzl.tmpl'),
     },
@@ -518,6 +526,7 @@ my_py_bin_wheel_from_src_dist(
     src_dist = '//:""" + src_dist_file + """',
     deps = [""" + ', '.join(["'" + str(dep) + "'" for dep in rctx.attr.deps]) + """],
     build_deps = [""" + ', '.join(["'" + str(build_dep) + "'" for build_dep in rctx.attr.build_deps]) + """],
+    patch = '""" + rctx.attr.patch + """',
     visibility = ['//visibility:public'],
 )""")
 
@@ -528,6 +537,7 @@ my_py_src_dist_downloader = repository_rule(
     "requirement": attr.string(mandatory=True),
     "deps": attr.string_list(),
     "build_deps": attr.string_list(),
+    "patch": attr.string(mandatory=False),
     "interpreter": attr.label(mandatory=True),
     "_src_dist_downloader": attr.label(
         allow_single_file = [".py"],
@@ -558,9 +568,10 @@ def _my_py_bin_wheel_from_src_dist_impl(ctx):
             wheel_file.path,
             wheel_name_file.path,
             build_wheels_dir.path,
+            ctx.file.patch.path,
         ],
         tools = ctx.attr._wheel_builder.files,
-        inputs = [ctx.file.src_dist, build_wheels_dir],
+        inputs = [ctx.file.src_dist, build_wheels_dir, ctx.file.patch],
         outputs = [wheel_file, wheel_name_file],
     )
 
@@ -602,6 +613,7 @@ my_py_bin_wheel_from_src_dist = rule(
     "src_dist": attr.label(allow_single_file = True, mandatory=True),
     "deps": attr.label_list(providers = [MyPythonInfo]),
     "build_deps": attr.label_list(providers = [MyPythonInfo]),
+    "patch": attr.label(allow_single_file=True, mandatory=False),
     "_wheel_builder": attr.label(
         default = "//:wheel_builder",
         executable = True,

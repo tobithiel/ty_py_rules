@@ -11,7 +11,7 @@ import build
 print(f'sys.argv: {sys.argv}')
 print(f'sys.path: {sys.path}')
 
-assert len(sys.argv) == 5
+assert len(sys.argv) >= 5
 src_dist_file = pathlib.Path(sys.argv[1])
 assert src_dist_file.exists()
 assert src_dist_file.is_file()
@@ -26,6 +26,11 @@ assert wheel_file_name.parent.is_dir()
 build_wheel_dependencies = pathlib.Path(sys.argv[4]).resolve() # needs to be absolute
 assert build_wheel_dependencies.exists()
 assert build_wheel_dependencies.is_dir()
+src_dist_patch = None
+if len(sys.argv) > 5:
+	src_dist_patch = pathlib.Path(sys.argv[5])
+	assert src_dist_patch.exists()
+	assert src_dist_patch.is_file()
 
 # add build dependencies to PYTHONPATH
 pythonpath = os.environ['PYTHONPATH']
@@ -38,6 +43,10 @@ with tempfile.TemporaryDirectory() as tmpdir:
 	src_dist_dir_top_level_contents = list(tmp_src_dist_dir.iterdir())
 	assert len(src_dist_dir_top_level_contents) == 1
 	tmp_src_dist_dir = tmp_src_dist_dir / src_dist_dir_top_level_contents[0]
+
+	if src_dist_patch is not None:
+		print(f'patch cwd: {os.getcwd()}')
+		subprocess.check_call(['patch', '-p1', '-d', str(tmp_src_dist_dir), '-i', str(src_dist_patch.resolve())])
 
 	with tempfile.TemporaryDirectory() as tmpdir2:
 		tmp_wheel_dir = pathlib.Path(tmpdir2)

@@ -5,16 +5,19 @@ _SRC_DISTS = {{SRC_DISTS}}
 _BIN_WHEELS = {{BIN_WHEELS}}
 _EXTRA_DEPS = {{EXTRA_DEPS}}
 _SRC_DISTS_BUILD_DEPS = {{SRC_DISTS_BUILD_DEPS}}
+_SRC_DISTS_PATCHES = {{SRC_DISTS_PATCHES}}
 
 def install_deps(**kwargs):
     for (name, _, requirement, deps) in _SRC_DISTS:
         extra_deps = _EXTRA_DEPS.get(name, [])
         build_deps = _SRC_DISTS_BUILD_DEPS.get(name, [])
+        patch = _SRC_DISTS_PATCHES.get(name, None)
         my_py_src_dist_downloader(
             name=name,
             requirement=requirement,
             deps=deps + extra_deps,
             build_deps=build_deps,
+            patch=patch,
             interpreter=_INTERPRETER,
             **kwargs,
         )

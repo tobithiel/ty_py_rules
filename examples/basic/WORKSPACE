@@ -28,6 +28,9 @@ my_py_pip_repository(
     name = "reqs",
     requirements = "@//:requirements.in.txt",
     interpreter = "@indygreg_py_3_10_13//:bin/python3",
+    src_dist_patches = {
+        "pyscard": "//thirdparty/pyscard:pyscard.diff",
+    },
     # TODO can this be automatically inferred?
     wheel_build_deps = {
         "editables": ["flit-core"],
